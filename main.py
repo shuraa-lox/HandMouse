@@ -1,18 +1,41 @@
 
 from colorama import Fore, Style, init
 
+import gestures
+
 import cv2
 import mediapipe as mp
-import time, pyautogui
+import pyautogui
 import math
 
-def pix2coord(frame, landmark):
-	h, w, _ = frame.shape
-	cx, cy = int(landmark.x * w), int(landmark.y * h)
-	return cx, cy
+buttons = { #Dict with mouse buttons status
+	"left" : False,
+	"right" : False,
+	"middle" : False 
+}
 
-def getDistance(x1, y1, x2, y2):
-	return math.sqrt(math.pow((x2-x1), 2) + math.pow((y2-y1), 2)) #Distance formula matematika
+def hold(button): #Hold function, which will release all buttons except given
+	if not buttons[button]: 
+		for btn in buttons.keys():
+			if btn != button:
+				buttons[btn] = False
+				pyautogui.mouseUp(button=btn)
+
+		print("Holded " + button)
+
+		buttons[button] = True
+		pyautogui.mouseDown(button=button)
+
+def release(button = None): 
+	if button is None:
+		for btn in buttons.keys():
+			buttons[btn] = False
+			pyautogui.mouseUp(button=btn)
+
+		return
+
+	buttons[button] = False
+	pyautogui.mouseUp(button=button)
 
 
 init()
@@ -27,13 +50,9 @@ screen_width, screen_height = pyautogui.size()
 pyautogui.FAILSAFE = True
 pyautogui.PAUSE = 0
 
-RMB_RANGE = 30 # range from index(ukazatelni) to thumb finger which will trigger right mouse buttton
-LMB_RANGE = 25 # from index to mid finger left mouse button
-MMB_RANGE1 = 130 # range from index finger to wrist which will trigger the mid mouse button (if second condition will work)
-MMB_RANGE2 = 120 # same for mid fing
 
 with mp_hands.Hands(
-    model_complexity=1, # 0 - speed 1 - uverenost
+    model_complexity=0, # 0 - speed 1 - uverenost
     max_num_hands=1,  
     min_detection_confidence=0.5, # hand detect uverenost
     min_tracking_confidence=0.5   # finger detect uverennnost
@@ -58,7 +77,7 @@ u can just show ur fist(facing top) to the cumera, like \"SOS\" gesture.
 
 		results = hands.process(rgb_frame) #hand detection
 
-        # Если не найдены руки найдены
+        # if hand finded
 		if results.multi_hand_landmarks:
 
 			for hand_landmarks in results.multi_hand_landmarks:
@@ -69,51 +88,35 @@ u can just show ur fist(facing top) to the cumera, like \"SOS\" gesture.
 					continue  
 	
 				index_finger_tip = hand_landmarks.landmark[8] #index fing(ukazatalnii)
-				ind_x, ind_y = pix2coord(frame, index_finger_tip)
-				cv2.circle(frame, (ind_x, ind_y), 10, (0, 255, 0), cv2.FILLED) # green point
-	
 				cursor_x = int(index_finger_tip.x * screen_width)
 				cursor_y = int(index_finger_tip.y * screen_height)
 				pyautogui.moveTo(cursor_x, cursor_y)
 	
 				middle_finger_tip = hand_landmarks.landmark[12] #mid fing
-				mid_x, mid_y = pix2coord(frame, middle_finger_tip)
-				cv2.circle(frame, (mid_x, mid_y), 10, (255, 0, 0), cv2.FILLED) # red point
-	
 				thumb_finger_tip = hand_landmarks.landmark[4] #thumb fing(bolshoi)
-				thumb_x, thumb_y = pix2coord(frame, thumb_finger_tip)
-				cv2.circle(frame, (thumb_x, thumb_y), 10, (0, 0, 255), cv2.FILLED) # blue point
-	
 				wrist = hand_landmarks.landmark[0] #wrist
-				wrist_x, wrist_y = pix2coord(frame, wrist)
-				cv2.circle(frame, (wrist_x, wrist_y), 10, (157, 55, 191), cv2.FILLED) # purp point
-	
-				if getDistance(ind_x, ind_y, wrist_x, wrist_y) <= MMB_RANGE1 and getDistance(mid_x, mid_y, wrist_x, wrist_y) <= MMB_RANGE2:
-					pyautogui.mouseUp(button="right")
-					pyautogui.mouseUp(button="left")
-	
-					pyautogui.mouseDown(button="middle")
-					print("Holding middle...")
+
+				LM_gesture = gestures.LeftMouseGesture(frame, index_finger_tip, middle_finger_tip)
+				RM_gesture = gestures.RightMouseGesture(frame, index_finger_tip, thumb_finger_tip)
+				MM_gesture = gestures.MiddleMouseGesture(frame, index_finger_tip, middle_finger_tip, wrist)
+
+				if MM_gesture.check():
+					hold("middle")
 				else:
-					pyautogui.mouseUp(button="middle")
-	
-					if getDistance(ind_x, ind_y, mid_x, mid_y) <= LMB_RANGE:
-						pyautogui.mouseUp(button="right")
-						pyautogui.mouseUp(button="middle")
+					release("middle")
 
-						pyautogui.mouseDown(button="left")
-						print("Holding left...")
+					if LM_gesture.check():
+						hold("left")
 					else:
-						pyautogui.mouseUp(button="left")
-	
-					if getDistance(thumb_x, thumb_y, ind_x, ind_y) <= RMB_RANGE: 
-						pyautogui.mouseUp(button="left")
-						pyautogui.mouseUp(button="middle")
+						release("left")
 
-						pyautogui.mouseDown(button="right")
-						print("Holding right...")
+					if RM_gesture.check(): 
+						hold("right")
 					else:
-						pyautogui.mouseUp(button="right")
+						release("right")
+					
+		else:
+			release()
 
 		cv2.imshow('Cumera', frame)
 
